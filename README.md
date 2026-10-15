@@ -85,7 +85,7 @@ cd wazuh-openai-integration
 ### Step 2 — Copy the integration script
 
 ```bash
-sudo cp integrations/custom-openai.py /var/ossec/integrations/custom-openai.py
+sudo cp custom-openai.py /var/ossec/integrations/custom-openai.py
 ```
 
 ### Step 3 — Set correct permissions
@@ -113,7 +113,7 @@ OPENAI_MODEL   = "gpt-4o-mini"   # Or "gpt-4o" for higher accuracy
 ### 2. Update `ossec.conf`
 
 Add the integration block to `/var/ossec/etc/ossec.conf`  
-(see [`docs/ossec-config-snippet.xml`](docs/ossec-config-snippet.xml) for the full snippet):
+(see [`ossec-config-snippet.xml`](ossec-config-snippet.xml) for the full snippet):
 
 ```xml
 <integration>
