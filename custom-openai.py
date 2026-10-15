@@ -11,12 +11,10 @@ import json
 import sys
 import urllib.request
 
-# ─────────────────────────────────────────────
-# Configuration — replace with your actual value
-# ─────────────────────────────────────────────
-OPENAI_API_KEY   = "YOUR_OPENAI_API_KEY"
-OPENAI_MODEL     = "gpt-4o-mini"
-OUTPUT_LOG_PATH  = "/var/ossec/logs/openai-alerts.json"
+# Wazuh Integrator passes the alert file first and <api_key> second.
+OPENAI_API_KEY = sys.argv[2] if len(sys.argv) > 2 else ""
+OPENAI_MODEL = "gpt-4o-mini"
+OUTPUT_LOG_PATH = "/var/ossec/logs/openai-alerts.json"
 
 
 def analyze_alert_with_openai(alert_data: dict) -> str:
@@ -50,12 +48,12 @@ def analyze_alert_with_openai(alert_data: dict) -> str:
     }
 
     headers = {
-        "Content-Type":  "application/json",
+        "Content-Type": "application/json",
         "Authorization": f"Bearer {OPENAI_API_KEY}",
     }
 
     data = json.dumps(payload).encode("utf-8")
-    req  = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
 
     try:
         with urllib.request.urlopen(req, timeout=15) as response:
@@ -66,22 +64,21 @@ def analyze_alert_with_openai(alert_data: dict) -> str:
 
 
 def process_alert_file(alert_file: str) -> None:
-    """Read a Wazuh alert file line-by-line, enrich each alert, and write to output log."""
-    with open(alert_file, "r") as f:
+    """Read a Wazuh alert file line-by-line, enrich it, and append JSON output."""
+    with open(alert_file, "r", encoding="utf-8") as f:
         for line in f:
             if not line.strip():
                 continue
-            alert    = json.loads(line)
-            analysis = analyze_alert_with_openai(alert)
-            alert["openai_analysis"] = analysis
+            alert = json.loads(line)
+            alert["openai_analysis"] = analyze_alert_with_openai(alert)
 
-            with open(OUTPUT_LOG_PATH, "a") as out_file:
+            with open(OUTPUT_LOG_PATH, "a", encoding="utf-8") as out_file:
                 out_file.write(json.dumps(alert) + "\n")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        sys.stderr.write("Usage: custom-openai.py <alert_file>\n")
+    if len(sys.argv) < 3 or not OPENAI_API_KEY:
+        sys.stderr.write("Usage: custom-openai <alert_file> <api_key>\n")
         sys.exit(1)
 
     try:

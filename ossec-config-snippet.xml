@@ -1,14 +1,8 @@
-<!--
-  Add this block inside your /var/ossec/etc/ossec.conf
-  under the <ossec_config> root element.
-
-  <level>7</level> means only alerts with severity level 7 or above
-  will be forwarded to the OpenAI integration script.
-  Adjust as needed (lower = more alerts, higher = fewer/critical only).
--->
-
+<!-- Add inside /var/ossec/etc/ossec.conf under an <ossec_config> block.
+     Replace the placeholder locally; never commit a real API key. -->
 <integration>
   <name>custom-openai</name>
-  <level>7</level>
+  <api_key>YOUR_OPENAI_API_KEY</api_key>
+  <level>10</level>
   <alert_format>json</alert_format>
 </integration>
