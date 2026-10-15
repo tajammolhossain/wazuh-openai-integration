@@ -1,200 +1,86 @@
-# 🤖 Wazuh SIEM × OpenAI — Intelligent Threat Analysis Pipeline
+# Wazuh SIEM + OpenAI Alert Analysis
 
-> Automatically analyzes **Wazuh SIEM** security alerts using **OpenAI GPT** models — providing real-time risk assessments, attack descriptions, and actionable remediation steps for SOC analysts.
+Analyze selected Wazuh security alerts with OpenAI, then append the risk assessment and suggested remediation to /var/ossec/logs/openai-alerts.json.
 
-[![Python](https://img.shields.io/badge/Python-3.x-blue?logo=python)](https://python.org)
-[![Wazuh](https://img.shields.io/badge/Wazuh-SIEM-00adef)](https://wazuh.com)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o--mini-412991?logo=openai)](https://platform.openai.com)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+> API calls may incur charges. Never commit or share a real API key. The output is a separate JSON log and does not automatically appear as an enriched event in Wazuh Dashboard.
 
----
+## Requirements
 
-## 📋 Table of Contents
+- Wazuh Manager 4.x
+- Python 3 (standard library only)
+- OpenAI API key with API billing/usage enabled
 
-- [Overview](#-overview)
-- [Architecture & Workflow](#-architecture--workflow)
-- [Prerequisites](#-prerequisites)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Restart Wazuh Manager](#-restart-wazuh-manager)
-- [Output Format](#-output-format)
-- [Chaining with Telegram Alerts](#-chaining-with-telegram-alerts)
-- [Troubleshooting](#-troubleshooting)
-- [Author](#-author)
+## Install
 
----
+Run these commands on the Wazuh Manager:
 
-## 🌐 Overview
-
-This integration sits between Wazuh's alert engine and your SOC workflow. When a security event crosses the configured severity threshold, the script:
-
-1. Receives the raw alert JSON from Wazuh
-2. Sends it to OpenAI's GPT model with a structured SOC analyst prompt
-3. Receives a risk assessment + remediation plan
-4. Enriches the original alert with the AI analysis
-5. Appends the enriched record to a structured log file
-
-No third-party Python packages required — only the standard library.
-
----
-
-## ⚙️ Architecture & Workflow
-
-```
-Wazuh Manager
-     │
-     │  Alert (level 7+) in JSON format
-     ▼
-custom-openai.py
-     │
-     │  POST → OpenAI API (gpt-4o-mini)
-     ▼
-AI Analysis (risk score, attack type, remediation)
-     │
-     │  Enriched alert appended
-     ▼
-/var/ossec/logs/openai-alerts.json
-     │
-     │  (Optional: feed into Telegram pipeline)
-     ▼
-SOC Analyst / Telegram Channel 📲
-```
-
----
-
-## ✅ Prerequisites
-
-| Requirement | Details |
-|---|---|
-| Wazuh Manager | v4.x or later |
-| Python | 3.6+ (standard library only) |
-| OpenAI API Key | [platform.openai.com](https://platform.openai.com) |
-| OpenAI Model | `gpt-4o-mini` (configurable) |
-
----
-
-## 🚀 Installation
-
-### Step 1 — Clone the repository
-
-```bash
+~~~bash
 git clone https://github.com/tajammolhossain/wazuh-openai-integration.git
 cd wazuh-openai-integration
-```
+sudo install -o root -g wazuh -m 750 custom-openai.py /var/ossec/integrations/custom-openai
+~~~
 
-### Step 2 — Copy the integration script
+The installed executable is named custom-openai to match the integration config. Wazuh passes the alert JSON file to the script as its first argument and the configured API key as its second.
 
-```bash
-sudo cp custom-openai.py /var/ossec/integrations/custom-openai.py
-```
+## Configure
 
-### Step 3 — Set correct permissions
+Open the Manager configuration:
 
-```bash
-sudo chmod 750 /var/ossec/integrations/custom-openai.py
-sudo chown root:wazuh /var/ossec/integrations/custom-openai.py
-```
+~~~bash
+sudo nano /var/ossec/etc/ossec.conf
+~~~
 
----
+Add this inside an <ossec_config> block. Replace the placeholder locally with your API key:
 
-## 🔧 Configuration
-
-### 1. Add your OpenAI API key
-
-Open `/var/ossec/integrations/custom-openai.py` and set your key:
-
-```python
-OPENAI_API_KEY = "sk-..."   # Your OpenAI API key
-OPENAI_MODEL   = "gpt-4o-mini"   # Or "gpt-4o" for higher accuracy
-```
-
-> ⚠️ **Never commit your real API key to Git.** Use an environment variable or secrets manager in production.
-
-### 2. Update `ossec.conf`
-
-Add the integration block to `/var/ossec/etc/ossec.conf`  
-(see [`ossec-config-snippet.xml`](ossec-config-snippet.xml) for the full snippet):
-
-```xml
+~~~xml
 <integration>
   <name>custom-openai</name>
-  <level>7</level>
+  <api_key>YOUR_OPENAI_API_KEY</api_key>
+  <level>10</level>
   <alert_format>json</alert_format>
 </integration>
-```
+~~~
 
-> **Tip:** Adjust `<level>` to control which alerts are analyzed:
-> | Level | Meaning |
-> |---|---|
-> | `5` | Notice — low severity |
-> | `7` | Warning — medium severity ✅ recommended |
-> | `10` | Critical only |
+The level filter sends alerts at that level or above. Choose a threshold appropriate to your alert volume and API budget. In nano, save with Ctrl+O, Enter; exit with Ctrl+X.
 
----
+## Validate and restart
 
-## 🔄 Restart Wazuh Manager
-
-**Docker deployment:**
-```bash
-sudo docker exec single-node-wazuh.manager-1 /var/ossec/bin/wazuh-control restart
-```
-
-**Native Linux installation:**
-```bash
+~~~bash
+sudo /var/ossec/bin/wazuh-analysisd -t
 sudo systemctl restart wazuh-manager
-```
+sudo systemctl status wazuh-manager --no-pager
+sudo grep -i custom-openai /var/ossec/logs/ossec.log | tail -n 20
+~~~
 
----
+## Narrow test (optional)
 
-## 📄 Output Format
+To test only the manager-started alert, temporarily add these XML lines inside the integration block:
 
-Each enriched alert is appended as a single JSON line to `/var/ossec/logs/openai-alerts.json`:
+~~~xml
+<rule_id>502</rule_id>
+<level>3</level>
+~~~
 
-```json
-{
-  "id": "1718023456.12345",
-  "rule": { "id": "5710", "level": 7, "description": "SSH brute force attempt" },
-  "agent": { "name": "web-server-01" },
-  "srcip": "192.168.1.105",
-  "openai_analysis": "**Risk Assessment:** HIGH\n**Attack Type:** SSH Brute Force\n**Remediation:** Block source IP via firewall, enforce key-based auth, review /var/log/auth.log."
-}
-```
+These lines belong in ossec.conf, not in the terminal. Save the config, validate it, and restart the Manager. Then inspect the output:
 
----
+~~~bash
+sudo tail -n 5 /var/ossec/logs/openai-alerts.json
+~~~
 
-## 🔗 Chaining with Telegram Alerts
+After the test, remove the rule_id filter and restore your intended threshold. Do not leave level 3 enabled without a narrow rule filter.
 
-This pipeline pairs directly with the **[Wazuh → Telegram Alert Pipeline](https://github.com/tajammolhossain/wazuh-telegram-alert)**. The Telegram integration reads `openai-alerts.json` and forwards the `openai_analysis` field as a formatted message to your Telegram channel.
+## Output and downstream use
 
-```
-Wazuh → custom-openai.py → openai-alerts.json → Telegram Bot → 📲
-```
+Each processed alert is appended as a JSON line to /var/ossec/logs/openai-alerts.json with an openai_analysis field. You can connect this file to a separate downstream pipeline, such as a notification service. Configure Wazuh separately if you want the log parsed and displayed in Dashboard events.
 
----
+## Troubleshooting
 
-## 🛠️ Troubleshooting
+- **Integration file not found:** confirm /var/ossec/integrations/custom-openai exists, is executable, and is owned by root:wazuh.
+- **No output file:** no alert matching the configured filter may have arrived yet.
+- **HTTP 429:** check the API project's billing/credits, usage, and rate limits; avoid repeated restarts.
+- **HTTP 401:** check that the key in ossec.conf is valid and active.
+- **Exposed API key:** revoke it, create a replacement, and never commit the real key.
 
-| Issue | Fix |
-|---|---|
-| `OpenAI API Error: HTTP 401` | Check that your API key is valid and active |
-| `OpenAI API Error: HTTP 429` | Rate limit hit — add retry logic or upgrade plan |
-| Script not triggered by Wazuh | Verify `<integration>` block is inside `<ossec_config>` |
-| Output log not created | Ensure Wazuh process has write access to `/var/ossec/logs/` |
-| `Permission denied` on script | Re-run `chmod 750` and `chown root:wazuh` |
+## License
 
-Check Wazuh logs for integration errors:
-```bash
-tail -f /var/ossec/logs/ossec.log | grep custom-openai
-```
-
----
-
-## 👤 Author
-
-**S. M. Tajammol Hossain**
-
----
-
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
+MIT
